@@ -1,0 +1,61 @@
+<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BundleAI</title><style>
+:root{--bg:#f6f7fb;--c:#fff;--t:#1c1f2a;--m:#6b7280;--p:#4f46e5;--ok:#16a34a;--w:#d97706;--e:#dc2626;--b:#e5e7eb}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1117;--c:#191c26;--t:#e8eaf0;--m:#9aa1b2;--b:#2a2f3d}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,'Noto Sans Thai',sans-serif;background:var(--bg);color:var(--t)}
+header{display:flex;gap:12px;align-items:center;padding:12px 20px;background:var(--c);border-bottom:1px solid var(--b);flex-wrap:wrap}
+header b{font-size:20px;color:var(--p);margin-right:auto}a{color:var(--p);cursor:pointer;text-decoration:none}
+main{max-width:900px;margin:0 auto;padding:20px}.card{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:16px;margin-bottom:12px}
+input,select,button{font:inherit;padding:10px 12px;border-radius:8px;border:1px solid var(--b);background:var(--c);color:var(--t);max-width:100%}
+button{background:var(--p);color:#fff;border:0;cursor:pointer}button.s{background:transparent;color:var(--p);border:1px solid var(--p)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--b)}
+.essential{background:#fee2e2;color:#991b1b}.recommended{background:#dbeafe;color:#1e40af}.optional{background:#e5e7eb;color:#374151}
+.bar{height:10px;background:var(--b);border-radius:9px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ok)}.over i{background:var(--e)}
+.m{color:var(--m);font-size:14px}.hero{text-align:center;padding:30px 0}.hero h1{font-size:30px;margin:0 0 6px}
+.err{background:#fee2e2;color:#991b1b;padding:10px;border-radius:8px;margin-bottom:10px}.warn{border-left:4px solid var(--w)}.error{border-left:4px solid var(--e)}.info{border-left:4px solid var(--p)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+</style></head><body>
+<header><b onclick="go('home')" style="cursor:pointer">🛍 BundleAI</b><a onclick="go('home')">Home</a><a onclick="go('catalog')">Catalog</a><a onclick="go('cart')">Cart</a><a onclick="go('orders')">Orders</a><span id="auth"></span></header>
+<main id="app"></main>
+<script>
+const $=s=>document.querySelector(s),app=$('#app');let S={token:localStorage.t,user:localStorage.u,bundle:null,goal:null,budget:null};
+const B=n=>'฿'+Number(n).toLocaleString();const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(m,u,b){const r=await fetch(u,{method:m,headers:{'Content-Type':'application/json',...(S.token?{Authorization:'Bearer '+S.token}:{})},body:b?JSON.stringify(b):undefined});
+ const d=await r.json().catch(()=>({}));if(r.status==401&&S.token){logout(true)}if(!r.ok)throw new Error(typeof d.detail=='string'?d.detail:'ข้อมูลไม่ถูกต้อง');return d}
+const err=m=>`<div class="err">${esc(m)}</div>`;
+function renderAuth(){$('#auth').innerHTML=S.token?`${esc(S.user)} · <a onclick="logout()">Logout</a>`:`<a onclick="go('login')">Login / Register</a>`}
+function logout(q){S.token=S.user=null;delete localStorage.t;delete localStorage.u;renderAuth();if(!q)go('home')}
+function go(p){location.hash=p}
+window.onhashchange=()=>route();
+async function route(){renderAuth();const p=location.hash.slice(1)||'home';const protectedP=['cart','orders','bundle','checkout'];
+ if(protectedP.includes(p)&&!S.token)return go('login');try{await({home,login,catalog,bundle,cart,checkout,orders}[p]||home)()}catch(e){app.innerHTML=err(e.message)}}
+async function home(){const g=await api('GET','/goals');app.innerHTML=`<div class="hero"><h1>Tell us what you want to do and your budget.</h1><p class="m">BundleAI builds the shopping list for you.</p></div>
+<div class="card"><div class="row"><select id="goal" style="flex:2">${g.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>
+<input id="budget" type="number" min="1" value="3000" style="flex:1" placeholder="งบ (บาท)"><button onclick="gen()">สร้าง Bundle</button></div><div id="e"></div></div>`}
+async function gen(){try{if(!S.token)return go('login');S.goal=+$('#goal').value;S.budget=+$('#budget').value;S.bundle=(await api('POST','/bundles/generate',{goal_id:S.goal,budget:S.budget})).id;go('bundle')}catch(e){$('#e').innerHTML=err(e.message)}}
+async function login(){app.innerHTML=`<div class="card"><h2>Login / Register</h2><div id="e"></div><div class="row" style="justify-content:flex-start">
+<input id="u" placeholder="username"><input id="em" placeholder="email (สมัครเท่านั้น)"><input id="p" type="password" placeholder="password"></div><p><button onclick="auth('login')">Login</button> <button class="s" onclick="auth('register')">Register</button></p><p class="m">Demo: demo / demo1234 · Admin: admin / admin123</p></div>`}
+async function auth(k){try{const d=await api('POST','/auth/'+k,{username:$('#u').value,password:$('#p').value,email:$('#em').value});
+ S.token=localStorage.t=d.token;S.user=localStorage.u=d.username;go('home')}catch(e){$('#e').innerHTML=err(e.message)}}
+async function catalog(){const p=await api('GET','/products');app.innerHTML=`<h2>Catalog</h2><div class="grid">${p.map(x=>`<div class="card"><b>${esc(x.name)}</b><div class="m">${esc(x.category)} · ⭐${x.rating} · stock ${x.stock}</div><div class="row"><b>${B(x.price)}</b><button class="s" onclick="addP(${x.id})">+ Cart</button></div></div>`).join('')}</div>`}
+async function addP(id){try{if(!S.token)return go('login');await api('POST','/cart/items',{product_id:id,quantity:1});alert('เพิ่มลงตะกร้าแล้ว')}catch(e){alert(e.message)}}
+async function bundle(){if(!S.bundle)return go('home');const b=await api('GET','/bundles/'+S.bundle);const pct=Math.min(b.percent_used,100);
+ app.innerHTML=`<h2>Your Bundle</h2><div class="card ${b.over_budget?'over':''}"><div class="row"><b>รวม ${B(b.total)} / งบ ${B(b.budget)}</b><span class="${b.over_budget?'':'m'}">${b.over_budget?'⚠ เกินงบ '+B(-b.remaining):'คงเหลือ '+B(b.remaining)}</span></div>
+ <div class="bar ${b.over_budget?'over':''}" style="margin-top:8px"><i style="width:${pct}%"></i></div><div class="m">ใช้ไป ${b.percent_used}%</div></div>
+ ${b.items.map(i=>`<div class="card"><div class="row"><div><span class="tag ${i.role}">${i.role}</span> <b>${esc(i.name)}</b><div class="m">${esc(i.reason)}</div></div><b>${B(i.price)}</b></div>
+ ${i.alternatives.length?`<div style="margin-top:8px"><select id="r${i.id}">${i.alternatives.map(a=>`<option value="${a.id}">${esc(a.name)} (${B(a.price)})</option>`).join('')}</select> <button class="s" onclick="rep(${i.id})">เปลี่ยน</button></div>`:''}</div>`).join('')}
+ <button onclick="addB()">Add Entire Bundle to Cart</button>`}
+async function rep(old){try{await api('POST',`/bundles/${S.bundle}/replace`,{old_product_id:old,new_product_id:+$('#r'+old).value});bundle()}catch(e){alert(e.message)}}
+async function addB(){await api('POST','/cart/bundle/'+S.bundle);go('cart')}
+async function cart(){const c=await api('GET','/cart');const a=await api('POST','/cart/analyze',{goal_id:S.goal,budget:S.budget});
+ app.innerHTML=`<h2>Cart</h2>${c.items.length?c.items.map(i=>`<div class="card row"><div><b>${esc(i.product.name)}</b><div class="m">${B(i.product.price)} × <input type="number" min="1" value="${i.quantity}" style="width:70px" onchange="qty(${i.id},this.value)"></div></div><div><b>${B(i.subtotal)}</b> <button class="s" onclick="del(${i.id})">ลบ</button></div></div>`).join('')+`<div class="card row"><b>รวม ${B(c.total)}</b><button onclick="go('checkout')">Checkout</button></div>`:'<p class="m">ตะกร้าว่าง</p>'}
+ <h3>🩺 Cart Doctor</h3>${a.issues.length?a.issues.map((x,n)=>`<div class="card ${x.severity}"><div>${esc(x.message)}</div>${x.action?`<button class="s" style="margin-top:8px" onclick='fix(${JSON.stringify(x.action)})'>ทำตามคำแนะนำ</button>`:''}</div>`).join(''):'<div class="card">✅ ตะกร้าดูดี ไม่พบปัญหา</div>'}
+ ${S.goal?'':'<p class="m">เคล็ดลับ: สร้าง Bundle ก่อนเพื่อให้ Cart Doctor ตรวจงบและของที่ขาดได้</p>'}`}
+async function qty(id,q){await api('PUT','/cart/items/'+id,{quantity:+q});cart()}async function del(id){await api('DELETE','/cart/items/'+id);cart()}
+async function fix(a){if(a.kind=='set_quantity')await api('PUT','/cart/items/'+a.item_id,{quantity:a.quantity});
+ if(a.kind=='remove_items')for(const i of a.item_ids)await api('DELETE','/cart/items/'+i);if(a.kind=='add_product')await api('POST','/cart/items',{product_id:a.product_id,quantity:1});cart()}
+async function checkout(){const c=await api('GET','/cart');app.innerHTML=`<h2>Checkout</h2><div class="card"><div id="e"></div>${c.items.map(i=>`<div class="row"><span>${esc(i.product.name)} × ${i.quantity}</span><span>${B(i.subtotal)}</span></div>`).join('')}<hr><b>รวม ${B(c.total)}</b><p><input id="addr" style="width:100%" placeholder="ที่อยู่จัดส่ง"></p><button onclick="place()">ยืนยันคำสั่งซื้อ</button></div>`}
+async function place(){try{await api('POST','/orders',{address:$('#addr').value});S.bundle=S.goal=S.budget=null;go('orders')}catch(e){$('#e').innerHTML=err(e.message)}}
+async function orders(){const o=await api('GET','/orders');app.innerHTML=`<h2>Order History</h2>${o.length?o.map(x=>`<div class="card"><div class="row"><b>Order #${x.id}</b><span class="tag">${esc(x.status)}</span></div><div class="m">${esc(x.created_at)} · ${esc(x.address)}</div>${x.items.map(i=>`<div class="row"><span>${esc(i.name)} × ${i.quantity}</span><span>${B(i.price*i.quantity)}</span></div>`).join('')}<b>รวม ${B(x.total)}</b></div>`).join(''):'<p class="m">ยังไม่มีคำสั่งซื้อ</p>'}`}
+route();
+</script></body></html>
