@@ -1,0 +1,97 @@
+<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BundleAI</title><style>
+:root{--bg:#f6f7fb;--c:#fff;--t:#1c1f2a;--m:#6b7280;--p:#4f46e5;--ok:#16a34a;--w:#d97706;--e:#dc2626;--b:#e5e7eb}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1117;--c:#191c26;--t:#e8eaf0;--m:#9aa1b2;--b:#2a2f3d}}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,'Noto Sans Thai',sans-serif;background:var(--bg);color:var(--t)}
+header{display:flex;gap:12px;align-items:center;padding:12px 20px;background:var(--c);border-bottom:1px solid var(--b);flex-wrap:wrap}
+header b{font-size:20px;color:var(--p);margin-right:auto}a{color:var(--p);cursor:pointer;text-decoration:none}
+main{max-width:900px;margin:0 auto;padding:20px}.card{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:16px;margin-bottom:12px}
+input,select,button{font:inherit;padding:10px 12px;border-radius:8px;border:1px solid var(--b);background:var(--c);color:var(--t);max-width:100%}
+button{background:var(--p);color:#fff;border:0;cursor:pointer}button.s{background:transparent;color:var(--p);border:1px solid var(--p)}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}.tag{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--b)}
+.essential{background:#fee2e2;color:#991b1b}.recommended{background:#dbeafe;color:#1e40af}.optional{background:#e5e7eb;color:#374151}
+.bar{height:10px;background:var(--b);border-radius:9px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ok)}.over i{background:var(--e)}
+.m{color:var(--m);font-size:14px}.hero{text-align:center;padding:30px 0}.hero h1{font-size:30px;margin:0 0 6px}
+.err{background:#fee2e2;color:#991b1b;padding:10px;border-radius:8px;margin-bottom:10px}.warn{border-left:4px solid var(--w)}.error{border-left:4px solid var(--e)}.info{border-left:4px solid var(--p)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+</style></head><body>
+<header><b onclick="go('home')" style="cursor:pointer">🛍 BundleAI</b><a onclick="go('home')">Home</a><a onclick="go('catalog')">Catalog</a><a onclick="go('cart')">Cart</a><a onclick="go('orders')">Orders</a><span id="auth"></span></header>
+<main id="app"></main>
+<script>
+const $=s=>document.querySelector(s),app=$('#app');let S={token:localStorage.t,user:localStorage.u,bundle:localStorage.b||null,admin:localStorage.a==='1'};
+const B=n=>'฿'+Number(n).toLocaleString();const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(m,u,b){const r=await fetch(u,{method:m,headers:{'Content-Type':'application/json',...(S.token?{Authorization:'Bearer '+S.token}:{})},body:b?JSON.stringify(b):undefined});
+ const d=await r.json().catch(()=>({}));if(r.status==401&&S.token){logout(true)}if(!r.ok)throw new Error(typeof d.detail=='string'?d.detail:Array.isArray(d.detail)?d.detail.map(x=>(x.loc||[]).slice(-1)+': '+x.msg).join(', '):'ข้อมูลไม่ถูกต้อง');return d}
+const err=m=>`<div class="err">${esc(m)}</div>`;
+function renderAuth(){$('#auth').innerHTML=S.token?`${S.admin?'<a onclick="go(\'admin\')">Admin</a> · ':''}<a onclick="go('profile')">${esc(S.user)}</a> · <a onclick="logout()">Logout</a>`:`<a onclick="go('login')">Login / Register</a>`}
+function logout(q){S.token=S.user=null;delete localStorage.t;delete localStorage.u;delete localStorage.b;delete localStorage.a;S.admin=false;S.bundle=null;renderAuth();if(!q)go('home')}
+function go(p){location.hash=p}
+window.onhashchange=()=>route();
+async function route(){renderAuth();const [p,arg]=(location.hash.slice(1)||'home').split('/');const protectedP=['cart','orders','bundle','checkout','profile','admin'];
+ if(protectedP.includes(p)&&!S.token)return go('login');try{await({home,login,catalog,bundle,cart,checkout,orders,product,profile,admin}[p]||home)(arg)}catch(e){app.innerHTML=err(e.message)}}
+async function home(){const g=await api('GET','/goals');app.innerHTML=`<div class="hero"><h1>Tell us what you want to do and your budget.</h1><p class="m">BundleAI builds the shopping list for you.</p></div>
+<div class="card"><div class="row"><select id="goal" style="flex:2">${g.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>
+<input id="budget" type="number" min="1" value="3000" style="flex:1" placeholder="งบ (บาท)"><button onclick="gen()">สร้าง Bundle</button></div><div id="e"></div></div>`}
+async function gen(){try{if(!S.token)return go('login');S.bundle=localStorage.b=(await api('POST','/bundles/generate',{goal_id:+$('#goal').value,budget:+$('#budget').value})).id;go('bundle')}catch(e){$('#e').innerHTML=err(e.message)}}
+async function login(){app.innerHTML=`<div class="card"><h2>Login / Register</h2><div id="e"></div><div class="row" style="justify-content:flex-start">
+<input id="u" placeholder="username"><input id="em" placeholder="email (สมัครเท่านั้น)"><input id="p" type="password" placeholder="password"></div><p><button onclick="auth('login')">Login</button> <button class="s" onclick="auth('register')">Register</button></p><p class="m">Demo: demo / demo1234 · Admin: admin / admin123</p></div>`}
+async function auth(k){try{const d=await api('POST','/auth/'+k,{username:$('#u').value,password:$('#p').value,email:$('#em').value});
+ S.token=localStorage.t=d.token;S.user=localStorage.u=d.username;S.admin=d.is_admin;localStorage.a=d.is_admin?'1':'';go('home')}catch(e){$('#e').innerHTML=err(e.message)}}
+let F={q:'',category_id:'',min_price:'',max_price:'',min_rating:'',in_stock:false,sort:''};
+const ICO=c=>/Shoes/.test(c)?'👟':/Socks/.test(c)?'🧦':/Bottle/.test(c)?'🥤':/Belt/.test(c)?'🎽':/Cap/.test(c)?'🧢':/Tent/.test(c)?'⛺':/Sleeping/.test(c)?'🛌':/Mat$/.test(c)?'🟫':/Headlamp/.test(c)?'🔦':/Mouse$/.test(c)?'🖱':/Keyboard/.test(c)?'⌨️':/Headset/.test(c)?'🎧':/Mousepad/.test(c)?'🟦':'📦';
+async function catalog(){const cats=await api('GET','/categories');const o=(v,t)=>`<option value="${v}" ${F.sort==v?'selected':''}>${t}</option>`;
+ app.innerHTML=`<h2>Catalog</h2><div class="card row" style="justify-content:flex-start"><input id="fq" placeholder="Search products..." value="${esc(F.q)}" onkeydown="if(event.key=='Enter')applyF()">
+ <select id="fc"><option value="">ทุกหมวด</option>${cats.map(c=>`<option value="${c.id}" ${F.category_id==c.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select>
+ <input id="fmin" type="number" min="0" placeholder="ราคาต่ำสุด" style="width:110px" value="${F.min_price}"><input id="fmax" type="number" min="0" placeholder="ราคาสูงสุด" style="width:110px" value="${F.max_price}">
+ <select id="fr"><option value="">ทุกเรตติ้ง</option><option value="4" ${F.min_rating==4?'selected':''}>⭐4+</option><option value="4.5" ${F.min_rating==4.5?'selected':''}>⭐4.5+</option></select>
+ <select id="fs">${o('','เรียง: ค่าเริ่มต้น')}${o('price_asc','ราคาต่ำ→สูง')}${o('price_desc','ราคาสูง→ต่ำ')}${o('rating','เรตติ้งสูงสุด')}</select>
+ <label class="m"><input type="checkbox" id="fst" ${F.in_stock?'checked':''}> มีสินค้าเท่านั้น</label><button onclick="applyF()">ค้นหา</button><button class="s" onclick="resetF()">ล้าง</button></div><div id="plist"></div>`;loadP()}
+function applyF(){F={q:$('#fq').value,category_id:$('#fc').value,min_price:$('#fmin').value,max_price:$('#fmax').value,min_rating:$('#fr').value,in_stock:$('#fst').checked,sort:$('#fs').value};loadP().catch(e=>$('#plist').innerHTML=err(e.message))}
+function resetF(){F={q:'',category_id:'',min_price:'',max_price:'',min_rating:'',in_stock:false,sort:''};catalog()}
+async function loadP(){const p=new URLSearchParams();for(const k in F)if(F[k]!==''&&F[k]!==false)p.set(k,F[k]);const r=await api('GET','/products?'+p);
+ $('#plist').innerHTML=r.length?`<div class="grid">${r.map(x=>`<div class="card"><div style="font-size:40px;text-align:center;cursor:pointer" onclick="go('product/${x.id}')">${ICO(x.category)}</div><a onclick="go('product/${x.id}')"><b>${esc(x.name)}</b></a><div class="m">${esc(x.category)} · ⭐${x.rating} · ${x.stock>0?'stock '+x.stock:'หมด'}</div><div class="row"><b>${B(x.price)}</b><button class="s" ${x.stock>0?'':'disabled'} onclick="addP(${x.id})">+ Cart</button></div></div>`).join('')}</div>`:'<p class="m">ไม่พบสินค้าที่ตรงกับเงื่อนไข</p>'}
+async function product(id){const x=await api('GET','/products/'+id);app.innerHTML=`<a onclick="go('catalog')">← กลับ Catalog</a><div class="card" style="margin-top:10px"><div class="row" style="align-items:flex-start;justify-content:flex-start;gap:24px">
+ <div style="font-size:110px;line-height:1;padding:20px;background:var(--bg);border-radius:12px">${ICO(x.category)}</div><div style="flex:1;min-width:220px"><span class="tag">${esc(x.category)}</span><h2 style="margin:8px 0">${esc(x.name)}</h2>
+ <div class="m">⭐ ${x.rating} · ${x.stock>0?'เหลือ '+x.stock+' ชิ้น':'สินค้าหมด'}</div><p>${esc(x.description)}</p><h2>${B(x.price)}</h2>
+ <button ${x.stock>0?'':'disabled'} onclick="addP(${x.id})">Add to Cart</button></div></div>
+ ${x.attributes.length?`<h3>คุณสมบัติ</h3>${x.attributes.map(a=>`<div class="row"><span class="m">${esc(a.key)}</span><span>${esc(a.value)}</span></div>`).join('')}`:''}</div>`}
+async function addP(id){try{if(!S.token)return go('login');await api('POST','/cart/items',{product_id:id,quantity:1});alert('เพิ่มลงตะกร้าแล้ว')}catch(e){alert(e.message)}}
+async function bundle(){if(!S.bundle)return go('home');const b=await api('GET','/bundles/'+S.bundle);const pct=Math.min(b.percent_used,100);
+ app.innerHTML=`<h2>Your Bundle</h2><div class="card ${b.over_budget?'over':''}"><div class="row"><b>รวม ${B(b.total)} / งบ ${B(b.budget)}</b><span class="${b.over_budget?'':'m'}">${b.over_budget?'⚠ เกินงบ '+B(-b.remaining):'คงเหลือ '+B(b.remaining)}</span></div>
+ <div class="bar ${b.over_budget?'over':''}" style="margin-top:8px"><i style="width:${pct}%"></i></div><div class="m">ใช้ไป ${b.percent_used}%</div></div>
+ ${b.items.map(i=>`<div class="card"><div class="row"><div><span class="tag ${i.role}">${i.role}</span> <a onclick="go('product/${i.id}')"><b>${esc(i.name)}</b></a><div class="m">${esc(i.reason)}</div></div><b>${B(i.price)}</b></div>
+ ${i.alternatives.length?`<div style="margin-top:8px"><select id="r${i.id}">${i.alternatives.map(a=>`<option value="${a.id}">${esc(a.name)} (${B(a.price)})</option>`).join('')}</select> <button class="s" onclick="rep(${i.id})">เปลี่ยน</button></div>`:''}</div>`).join('')}
+ <button onclick="addB()">Add Entire Bundle to Cart</button>`}
+async function rep(old){try{await api('POST',`/bundles/${S.bundle}/replace`,{old_product_id:old,new_product_id:+$('#r'+old).value});bundle()}catch(e){alert(e.message)}}
+async function addB(){await api('POST','/cart/bundle/'+S.bundle);go('cart')}
+async function cart(){const c=await api('GET','/cart');const a=await api('POST','/cart/analyze',{});
+ app.innerHTML=`<h2>Cart</h2>${c.goal_id?`<div class="m">Goal: ${esc(c.goal)} · งบ ${B(c.budget)}</div>`:''}${c.items.length?c.items.map(i=>`<div class="card row"><div><a onclick="go('product/${i.product.id}')"><b>${esc(i.product.name)}</b></a><div class="m">${B(i.product.price)} × <input type="number" min="1" value="${i.quantity}" style="width:70px" onchange="qty(${i.id},this.value)"></div></div><div><b>${B(i.subtotal)}</b> <button class="s" onclick="del(${i.id})">ลบ</button></div></div>`).join('')+`<div class="card row"><b>รวม ${B(c.total)}</b><button onclick="go('checkout')">Checkout</button></div>`:'<p class="m">ตะกร้าว่าง</p>'}
+ <h3>🩺 Cart Doctor</h3>${a.issues.length?a.issues.map((x,n)=>`<div class="card ${x.severity}"><div>${esc(x.message)}</div>${x.action?`<button class="s" style="margin-top:8px" onclick='fix(${JSON.stringify(x.action)})'>ทำตามคำแนะนำ</button>`:''}</div>`).join(''):'<div class="card">✅ ตะกร้าดูดี ไม่พบปัญหา</div>'}
+ ${c.goal_id?'':'<p class="m">เคล็ดลับ: สร้าง Bundle ก่อนเพื่อให้ Cart Doctor ตรวจงบและของที่ขาดได้</p>'}`}
+async function qty(id,q){await api('PUT','/cart/items/'+id,{quantity:+q});cart()}async function del(id){await api('DELETE','/cart/items/'+id);cart()}
+async function fix(a){if(a.kind=='set_quantity')await api('PUT','/cart/items/'+a.item_id,{quantity:a.quantity});
+ if(a.kind=='remove_items')for(const i of a.item_ids)await api('DELETE','/cart/items/'+i);if(a.kind=='add_product')await api('POST','/cart/items',{product_id:a.product_id,quantity:1});cart()}
+async function checkout(){const c=await api('GET','/cart');const pf=await api('GET','/profile');app.innerHTML=`<h2>Checkout</h2><div class="card"><div id="e"></div>${c.items.map(i=>`<div class="row"><span>${esc(i.product.name)} × ${i.quantity}</span><span>${B(i.subtotal)}</span></div>`).join('')}<hr><b>รวม ${B(c.total)}</b><p><input id="addr" style="width:100%" placeholder="ที่อยู่จัดส่ง" value="${esc(pf.address)}"></p><button onclick="place()">ยืนยันคำสั่งซื้อ</button></div>`}
+async function place(){try{await api('POST','/orders',{address:$('#addr').value});S.bundle=null;delete localStorage.b;go('orders')}catch(e){$('#e').innerHTML=err(e.message)}}
+async function orders(){const o=await api('GET','/orders');app.innerHTML=`<h2>Order History</h2>${o.length?o.map(x=>`<div class="card"><div class="row"><b>Order #${x.id}</b><span class="tag">${esc(x.status)}</span></div><div class="m">${esc(x.created_at)} · ${esc(x.address)}</div>${x.items.map(i=>`<div class="row"><span>${esc(i.name)} × ${i.quantity}</span><span>${B(i.price*i.quantity)}</span></div>`).join('')}<b>รวม ${B(x.total)}</b></div>`).join(''):'<p class="m">ยังไม่มีคำสั่งซื้อ</p>'}`}
+async function profile(){const p=await api('GET','/profile');const o=await api('GET','/orders');
+ app.innerHTML=`<h2>Profile</h2><div class="card"><div id="e"></div><p class="m">Username: ${esc(p.username)}</p><div class="row" style="justify-content:flex-start"><input id="pn" placeholder="ชื่อ-นามสกุล" value="${esc(p.full_name)}"><input id="pe" placeholder="อีเมล" value="${esc(p.email)}"></div>
+ <p><input id="pa" style="width:100%" placeholder="ที่อยู่จัดส่ง" value="${esc(p.address)}"></p><button onclick="saveP()">บันทึก</button></div>
+ <h3>Order History (${o.length})</h3>${o.slice(0,5).map(x=>`<div class="card row"><b>Order #${x.id}</b><span>${B(x.total)} <span class="tag">${esc(x.status)}</span></span></div>`).join('')||'<p class="m">ยังไม่มีคำสั่งซื้อ</p>'}<a onclick="go('orders')">ดูทั้งหมด →</a>`}
+async function saveP(){try{await api('PUT','/profile',{full_name:$('#pn').value,email:$('#pe').value,address:$('#pa').value});$('#e').innerHTML='<p style="color:var(--ok)">บันทึกแล้ว ✓</p>'}catch(e){$('#e').innerHTML=err(e.message)}}
+const ST=['confirmed','processing','shipped','completed','cancelled'];let AP=[];
+async function admin(){if(!S.admin)throw new Error('เฉพาะผู้ดูแลระบบ');const [s,pr,od,cats]=await Promise.all([api('GET','/admin/stats'),api('GET','/admin/products'),api('GET','/admin/orders'),api('GET','/categories')]);AP=pr;
+ const mx=Math.max(1,...s.sales_by_day.map(d=>d.total));
+ app.innerHTML=`<h2>Admin Dashboard</h2><div class="grid">${[['Total Sales',B(s.total_sales)],['Total Orders',s.total_orders],['Customers',s.total_customers],['Low Stock',s.low_stock.length]].map(k=>`<div class="card"><div class="m">${k[0]}</div><h2 style="margin:4px 0">${k[1]}</h2></div>`).join('')}</div>
+ <div class="card"><b>Sales (7 วันล่าสุด)</b><div style="display:flex;gap:8px;align-items:flex-end;height:130px;margin-top:10px">${s.sales_by_day.map(d=>`<div style="flex:1;text-align:center"><div title="${B(d.total)}" style="background:var(--p);height:${Math.round(d.total/mx*100)}px;min-height:2px;border-radius:4px 4px 0 0"></div><div class="m" style="font-size:11px">${d.day.slice(5)}</div></div>`).join('')}</div></div>
+ <div class="grid"><div class="card"><b>สถานะ Order</b>${ST.map(k=>`<div class="row"><span>${k}</span><b>${s.order_status[k]||0}</b></div>`).join('')}</div>
+ <div class="card"><b>สินค้าขายดี</b>${s.top_products.map(t=>`<div class="row"><span>${esc(t.name)}</span><b>${t.quantity}</b></div>`).join('')||'<p class="m">ยังไม่มีข้อมูล</p>'}</div>
+ <div class="card"><b>Stock ต่ำ (≤5)</b>${s.low_stock.map(t=>`<div class="row"><span>${esc(t.name)}</span><b>${t.stock}</b></div>`).join('')||'<p class="m">ไม่มี</p>'}</div></div>
+ <h3>Products</h3><div id="pe"></div>${pr.map(p=>`<div class="card row"><div style="min-width:160px"><b>${esc(p.name)}</b><div class="m">${esc(p.category)}</div></div><div class="row" style="gap:6px"><input id="pp${p.id}" type="number" value="${p.price}" style="width:90px"><input id="ps${p.id}" type="number" value="${p.stock}" style="width:70px"><label class="m"><input id="pv${p.id}" type="checkbox" ${p.active?'checked':''}> เปิดขาย</label><button class="s" onclick="saveProd(${p.id})">บันทึก</button></div></div>`).join('')}
+ <div class="card"><b>เพิ่มสินค้า</b><div class="row" style="justify-content:flex-start;margin-top:8px"><input id="nn" placeholder="ชื่อสินค้า"><select id="nc">${cats.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select><input id="np" type="number" min="1" placeholder="ราคา" style="width:100px"><input id="ns" type="number" min="0" placeholder="stock" style="width:90px"><button onclick="addProd()">เพิ่ม</button></div></div>
+ <h3>Orders</h3>${od.map(o=>`<div class="card row"><span><b>#${o.id}</b> · user ${o.user_id} · ${B(o.total)}</span><select onchange="setSt(${o.id},this.value)">${ST.map(k=>`<option ${o.status==k?'selected':''}>${k}</option>`).join('')}</select></div>`).join('')||'<p class="m">ยังไม่มี Order</p>'}`}
+async function saveProd(id){const p=AP.find(x=>x.id==id);try{await api('PUT','/admin/products/'+id,{category_id:p.category_id,name:p.name,description:p.description,price:+$('#pp'+id).value,stock:+$('#ps'+id).value,active:$('#pv'+id).checked});admin()}catch(e){$('#pe').innerHTML=err(e.message)}}
+async function addProd(){try{await api('POST','/admin/products',{category_id:+$('#nc').value,name:$('#nn').value,price:+$('#np').value,stock:+$('#ns').value});admin()}catch(e){$('#pe').innerHTML=err(e.message)}}
+async function setSt(id,st){try{await api('PUT',`/admin/orders/${id}/status`,{status:st});admin()}catch(e){alert(e.message)}}
+route();
+</script></body></html>
